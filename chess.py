@@ -18,6 +18,7 @@ LIGHT_SQUARE = (240, 217, 181)  # Beige claro
 DARK_SQUARE = (181, 136, 99)    # Marrón oscuro
 WHITE_PIECE_COLOR = (255, 255, 255)  # Color para piezas blancas
 BLACK_PIECE_COLOR = (0, 0, 0)        # Color para piezas negras
+SELECTED_SQUARE = (255, 255, 0)      # Amarillo para casilla seleccionada
 
 # Símbolos Unicode para las piezas
 PIECES = {
@@ -49,16 +50,74 @@ def get_removable_pieces(board):
                 removable.append((row, col))
     return removable
 
+# Validar movimientos del rey
+def get_king_moves(board, row, col):
+    moves = []
+    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]  # 8 direcciones
+    for dr, dc in directions:
+        new_row, new_col = row + dr, col + dc
+        if 0 <= new_row < 8 and 0 <= new_col < 8 and board[new_row][new_col] == '':
+            moves.append((new_row, new_col))
+    return moves
+
+# Validar movimientos de la reina
+def get_queen_moves(board, row, col):
+    moves = []
+    # Direcciones: horizontal, vertical, diagonal
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+    for dr, dc in directions:
+        r, c = row, col
+        while True:
+            r, c = r + dr, c + dc
+            if 0 <= r < 8 and 0 <= c < 8:
+                if board[r][c] == '':
+                    moves.append((r, c))
+                else:
+                    break
+            else:
+                break
+    return moves
+
+# Obtener movimientos válidos para una pieza
+def get_valid_moves(board, row, col):
+    piece = board[row][col]
+    if piece == 'b_king' or piece == 'w_king':
+        return get_king_moves(board, row, col)
+    elif piece == 'w_queen':
+        return get_queen_moves(board, row, col)
+    return []
+
+# Mover pieza blanca automáticamente
+def computer_move(board):
+    white_pieces = []
+    for row in range(8):
+        for col in range(8):
+            if board[row][col] in ['w_king', 'w_queen']:
+                white_pieces.append((row, col))
+    if not white_pieces:
+        return False
+    row, col = random.choice(white_pieces)
+    moves = get_valid_moves(board, row, col)
+    if moves:
+        new_row, new_col = random.choice(moves)
+        board[new_row][new_col] = board[row][col]
+        board[row][col] = ''
+        print(f"Computer moved {board[new_row][new_col]} to ({new_row}, {new_col})")
+        return True
+    return False
+
 # Dibujar el tablero
-def draw_board(window):
+def draw_board(window, selected_square=None):
     for row in range(8):
         for col in range(8):
             color = LIGHT_SQUARE if (row + col) % 2 == 0 else DARK_SQUARE
+            if selected_square == (row, col):
+                color = SELECTED_SQUARE
             pygame.draw.rect(window, color, (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
 # Dibujar las piezas
 def draw_pieces(window, board):
-    font = pygame.font.SysFont('segoeuisymbol', 80)  # Usar fuente compatible con Unicode
+    font = pygame.font.SysFont('segoeuisymbol', 80)  # Fuente compatible con Unicode
     for row in range(8):
         for col in range(8):
             piece = board[row][col]
@@ -70,38 +129,55 @@ def draw_pieces(window, board):
 
 # Configuración inicial
 def setup():
-    global board, removable_pieces, last_remove_time
+    global board, removable_pieces, last_remove_time, turn, selected_square
     board = initialize_board()
     removable_pieces = get_removable_pieces(board)
     last_remove_time = pygame.time.get_ticks()
+    turn = 'player'  # Empieza el jugador (negras)
+    selected_square = None
 
-# Actualizar el tablero eliminando piezas
+# Actualizar el tablero
 def update_loop():
-    global board, removable_pieces, last_remove_time
+    global board, removable_pieces, last_remove_time, turn, selected_square
     current_time = pygame.time.get_ticks()
-    # Eliminar una pieza cada 1000 ms (1 segundo)
     if current_time - last_remove_time >= 100 and removable_pieces:
         row, col = random.choice(removable_pieces)
-        board[row][col] = ''  # Eliminar la pieza
-        removable_pieces.remove((row, col))  # Quitar de la lista
+        board[row][col] = ''
+        removable_pieces.remove((row, col))
         last_remove_time = current_time
-    draw_board(WINDOW)
+    elif not removable_pieces and turn == 'computer':
+        if computer_move(board):
+            turn = 'player'
+    draw_board(WINDOW, selected_square)
     draw_pieces(WINDOW, board)
     pygame.display.flip()
 
 # Función principal
 async def main():
-    setup()
+    global turn, selected_square  # Declarar variables globales
+    setup()  # Inicializar el juego
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 return
-            elif event.type == pygame.MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN and turn == 'player' and not removable_pieces:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 col = mouse_x // SQUARE_SIZE
                 row = mouse_y // SQUARE_SIZE
-                print(f"Clicked square: ({row}, {col}) - Piece: {board[row][col]}")
+                if selected_square is None:
+                    if board[row][col] == 'b_king':
+                        selected_square = (row, col)
+                        print(f"Selected b_king at ({row}, {col})")
+                else:
+                    if (row, col) in get_valid_moves(board, *selected_square):
+                        board[row][col] = 'b_king'
+                        board[selected_square[0]][selected_square[1]] = ''
+                        selected_square = None
+                        turn = 'computer'
+                        print(f"Moved b_king to ({row}, {col})")
+                    else:
+                        selected_square = None
         update_loop()
         await asyncio.sleep(1.0 / 60)  # 60 FPS
 
