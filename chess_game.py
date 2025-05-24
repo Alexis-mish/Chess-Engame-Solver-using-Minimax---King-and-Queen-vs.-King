@@ -137,6 +137,12 @@ def evaluate(board):
         return 1000
     black_moves = get_black_king_moves(board)
     score = -len(black_moves) * 10
+
+    # Distancia a la esquina más cercana
+    corners = [(0, 0), (0, 7), (7, 0), (7, 7)]
+    dist_to_corner = min(abs(bk[0]-cr)+abs(bk[1]-cc) for cr, cc in corners)
+    score += (14 - dist_to_corner) * 5
+
     wq = find_piece(board, 'w_queen')
     wk = find_piece(board, 'w_king')
     if wq:
@@ -148,6 +154,7 @@ def evaluate(board):
     if is_in_check(board, bk):
         score += 100
     return score
+
 
 def minimax(board, depth, alpha, beta, maximizing):
     if depth == 0 or is_checkmate(board) or is_stalemate(board):
@@ -189,6 +196,23 @@ def minimax(board, depth, alpha, beta, maximizing):
         return min_eval
 
 def computer_move(board):
+    # Paso 1: Buscar mate en 1
+    for r in range(8):
+        for c in range(8):
+            piece = board[r][c]
+            if piece and piece.startswith('w'):
+                moves = get_king_moves(board, r, c, True) if piece == 'w_king' else get_queen_moves(board, r, c)
+                for mr, mc in moves:
+                    newb = [row[:] for row in board]
+                    newb[mr][mc] = piece
+                    newb[r][c] = ''
+                    if is_checkmate(newb):
+                        board[mr][mc] = piece
+                        board[r][c] = ''
+                        print(f"Computer does checkmate with {piece} from ({r},{c}) to ({mr},{mc})")
+                        return True
+
+    # Paso 2: Si no hay mate en 1, evalúa jugadas normalmente
     best_val = float('-inf')
     best_move = None
     for r in range(8):
@@ -200,7 +224,7 @@ def computer_move(board):
                     newb = [row[:] for row in board]
                     newb[mr][mc] = piece
                     newb[r][c] = ''
-                    val = minimax(newb, 3, float('-inf'), float('inf'), False)
+                    val = minimax(newb, 2, float('-inf'), float('inf'), False)
                     if val > best_val:
                         best_val = val
                         best_move = (r, c, mr, mc)
@@ -211,6 +235,7 @@ def computer_move(board):
         print(f"Computer moves {board[mr][mc]} from ({r},{c}) to ({mr},{mc})")
         return True
     return False
+
 
 def draw_board(win, board, selected=None, valid_moves=[]):
     for r in range(8):
@@ -242,7 +267,7 @@ def draw_game_state(win, message):
 
 def main():
     board = init_board()
-    turn = 'computer'
+    turn = 'player'
     selected = None
     game_over = False
     message = ""
