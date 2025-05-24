@@ -1,5 +1,6 @@
 import pygame
 import sys
+import threading
 
 # Initialize pygame
 pygame.init()
@@ -241,7 +242,7 @@ def draw_game_state(win, message):
 
 def main():
     board = init_board()
-    turn = 'player'
+    turn = 'computer'
     selected = None
     game_over = False
     message = ""
@@ -276,15 +277,20 @@ def main():
                         sr, sc = selected
                         board[r][c] = 'b_king'
                         board[sr][sc] = ''
+                        pygame.display.flip()
                         turn = 'computer'
                     selected = None
                     valid_moves = []
 
-        if not game_over and turn == 'computer':
-            pygame.time.wait(200)  # Pequeña pausa para suavidad
+        def computer_turn_thread():
+            nonlocal turn
             moved = computer_move(board)
             if moved:
                 turn = 'player'
+
+        if not game_over and turn == 'computer' and threading.active_count() == 1:
+            threading.Thread(target=computer_turn_thread).start()
+
 
         # Verifica estado del juego
         bk = find_piece(board, 'b_king')
