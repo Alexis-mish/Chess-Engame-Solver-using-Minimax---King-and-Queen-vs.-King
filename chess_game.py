@@ -14,6 +14,10 @@ DARK_SQUARE = (181, 136, 99)
 WHITE_PIECE_COLOR = (245, 245, 220)
 BLACK_PIECE_COLOR = (20, 20, 20)
 SELECTED_SQUARE = (255, 255, 0)
+VALID_MOVE_COLOR = (0, 255, 0)
+INVALID_MOVE_COLOR = (255, 0, 0)
+FONT = pygame.font.SysFont("Arial", 32)
+
 
 PIECES = {
     'w_king': '♔',
@@ -207,13 +211,18 @@ def computer_move(board):
         return True
     return False
 
-def draw_board(win, selected=None):
+def draw_board(win, board, selected=None, valid_moves=[]):
     for r in range(8):
         for c in range(8):
-            color = LIGHT_SQUARE if (r+c) % 2 == 0 else DARK_SQUARE
-            if selected == (r,c):
+            color = LIGHT_SQUARE if (r + c) % 2 == 0 else DARK_SQUARE
+            if selected == (r, c):
                 color = SELECTED_SQUARE
             pygame.draw.rect(win, color, (c*SQUARE_SIZE, r*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+
+    # Dibuja círculos para movimientos válidos
+    for (r, c) in valid_moves:
+        center = (c * SQUARE_SIZE + SQUARE_SIZE//2, r * SQUARE_SIZE + SQUARE_SIZE//2)
+        pygame.draw.circle(win, VALID_MOVE_COLOR, center, 10)
 
 def draw_pieces(win, board):
     font = pygame.font.SysFont("segoeuisymbol", 72)
@@ -226,53 +235,76 @@ def draw_pieces(win, board):
                 rect = text.get_rect(center=(c*SQUARE_SIZE + SQUARE_SIZE//2, r*SQUARE_SIZE + SQUARE_SIZE//2))
                 win.blit(text, rect)
 
+def draw_game_state(win, message):
+    text = FONT.render(message, True, (0, 0, 0))
+    win.blit(text, (10, HEIGHT - 40))
+
 def main():
     board = init_board()
     turn = 'player'
     selected = None
     game_over = False
+    message = ""
     clock = pygame.time.Clock()
+    valid_moves = []
 
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    board = init_board()
+                    turn = 'player'
+                    selected = None
+                    valid_moves = []
+                    game_over = False
+                    message = ""
+
             elif event.type == pygame.MOUSEBUTTONDOWN and turn == 'player' and not game_over:
                 mx, my = pygame.mouse.get_pos()
                 c, r = mx // SQUARE_SIZE, my // SQUARE_SIZE
+
                 if selected is None:
                     if board[r][c] == 'b_king':
                         selected = (r, c)
+                        valid_moves = get_black_king_moves(board)
                 else:
-                    sr, sc = selected
-                    moves = get_black_king_moves(board)
-                    if (r, c) in moves:
+                    if (r, c) in valid_moves:
+                        sr, sc = selected
                         board[r][c] = 'b_king'
                         board[sr][sc] = ''
                         turn = 'computer'
                     selected = None
+                    valid_moves = []
 
         if not game_over and turn == 'computer':
+            pygame.time.wait(200)  # Pequeña pausa para suavidad
             moved = computer_move(board)
             if moved:
                 turn = 'player'
 
+        # Verifica estado del juego
         bk = find_piece(board, 'b_king')
         if is_checkmate(board):
-            print("Checkmate! Computer wins!")
+            message = "Checkmate! ¡La computadora gana!"
             game_over = True
         elif is_stalemate(board):
-            print("Stalemate! Draw!")
+            message = "¡Empate por ahogado!"
             game_over = True
         elif bk is None:
-            print("Black king captured! Computer wins!")
+            message = "¡El rey negro fue capturado!"
             game_over = True
 
-        draw_board(WINDOW, selected)
+        draw_board(WINDOW, board, selected, valid_moves)
         draw_pieces(WINDOW, board)
+        if message:
+            draw_game_state(WINDOW, message + " - Presiona 'R' para reiniciar")
         pygame.display.flip()
         clock.tick(60)
+
 
 if __name__ == "__main__":
     main()
