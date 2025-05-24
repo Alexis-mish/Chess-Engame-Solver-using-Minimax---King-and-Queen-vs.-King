@@ -1,233 +1,279 @@
-import copy
+import pygame
+import sys
 
-# Constantes
-EMPTY = "."
-WHITE_KING = "K"
-WHITE_QUEEN = "Q"
-BLACK_KING = "k"
+# Initialize pygame
+pygame.init()
+WIDTH, HEIGHT = 600, 600
+SQUARE_SIZE = WIDTH // 8
+WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("King and Queen vs King")
 
-BOARD_SIZE = 8
+# Colors
+LIGHT_SQUARE = (240, 217, 181)
+DARK_SQUARE = (181, 136, 99)
+WHITE_PIECE_COLOR = (245, 245, 220)
+BLACK_PIECE_COLOR = (20, 20, 20)
+SELECTED_SQUARE = (255, 255, 0)
 
-# Crea el tablero inicial con rey y reina blancos vs rey negro
-def create_initial_board():
-    board = [[EMPTY for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
-    board[7][4] = WHITE_KING    # e1
-    board[7][3] = WHITE_QUEEN   # d1
-    board[0][4] = BLACK_KING    # e8
+PIECES = {
+    'w_king': '♔',
+    'w_queen': '♕',
+    'b_king': '♚'
+}
+
+def init_board():
+    board = [['' for _ in range(8)] for _ in range(8)]
+    board[0][4] = 'w_king'
+    board[0][5] = 'w_queen'
+    board[7][0] = 'b_king'
     return board
 
-# Imprimir el tablero bonito
-def print_board(board):
-    for row in board:
-        print(" ".join(row))
-    print()
+def on_board(r, c):
+    return 0 <= r < 8 and 0 <= c < 8
 
-# Encuentra la posición de una pieza
 def find_piece(board, piece):
-    for i in range(BOARD_SIZE):
-        for j in range(BOARD_SIZE):
-            if board[i][j] == piece:
-                return (i, j)
+    for r in range(8):
+        for c in range(8):
+            if board[r][c] == piece:
+                return (r, c)
     return None
 
-# Movimientos legales del rey (8 direcciones)
-def king_moves(pos):
+def get_king_moves(board, r, c, white):
+    directions = [(-1, -1), (-1, 0), (-1, 1),
+                  (0, -1),           (0, 1),
+                  (1, -1),  (1, 0),  (1, 1)]
     moves = []
-    for dr in [-1, 0, 1]:
-        for dc in [-1, 0, 1]:
-            if dr == 0 and dc == 0:
-                continue
-            r, c = pos[0] + dr, pos[1] + dc
-            if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
-                moves.append((r, c))
-    return moves
-
-# Movimientos legales de la reina (líneas y diagonales)
-def queen_moves(pos, board):
-    moves = []
-    directions = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)]
+    enemy_prefix = 'b' if white else 'w'
+    if white:
+        bk = find_piece(board, 'b_king')
     for dr, dc in directions:
-        r, c = pos
-        while True:
-            r += dr
-            c += dc
-            if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
-                if board[r][c] == EMPTY:
-                    moves.append((r, c))
-                elif board[r][c] == BLACK_KING:
-                    break  # No capturar al rey
-                else:
-                    break
-            else:
-                break
+        nr, nc = r + dr, c + dc
+        if on_board(nr, nc):
+            cell = board[nr][nc]
+            if cell == '' or cell.startswith(enemy_prefix):
+                if white and bk and abs(nr - bk[0]) <= 1 and abs(nc - bk[1]) <= 1:
+                    continue
+                moves.append((nr, nc))
     return moves
 
-# Aplicar un movimiento
-def apply_move(board, piece, new_pos):
-    old_pos = find_piece(board, piece)
-    if old_pos is None:
-        return
-    if board[new_pos[0]][new_pos[1]] == BLACK_KING and piece != BLACK_KING:
-        return
-    board[old_pos[0]][old_pos[1]] = EMPTY
-    board[new_pos[0]][new_pos[1]] = piece
+def get_queen_moves(board, r, c):
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1),
+                  (-1, -1), (-1, 1), (1, -1), (1, 1)]
+    moves = []
+    bk = find_piece(board, 'b_king')
+    wk = find_piece(board, 'w_king')
+    for dr, dc in directions:
+        nr, nc = r + dr, c + dc
+        while on_board(nr, nc):
+            if board[nr][nc] == '':
+                # Avoid queen moving behind white king relative to black king
+                if wk and bk:
+                    v_q_bk = (bk[0] - r, bk[1] - c)
+                    v_q_mv = (nr - r, nc - c)
+                    v_q_wk = (wk[0] - r, wk[1] - c)
+                    dot1 = v_q_bk[0]*v_q_mv[0] + v_q_bk[1]*v_q_mv[1]
+                    dot2 = v_q_bk[0]*v_q_wk[0] + v_q_bk[1]*v_q_wk[1]
+                    if dot1 < 0 and dot2 > 0:
+                        break
+                moves.append((nr, nc))
+            else:
+                if board[nr][nc].startswith('b'):
+                    moves.append((nr, nc))
+                break
+            nr += dr
+            nc += dc
+    return moves
 
-# Verificar si una casilla está atacada por la reina o el rey blanco
-def is_attacked_by_white(board, r, c):
-    wq = find_piece(board, WHITE_QUEEN)
-    wk = find_piece(board, WHITE_KING)
-
-    if wq:
-        if r == wq[0] or c == wq[1] or abs(r - wq[0]) == abs(c - wq[1]):
-            return True
-    if wk:
-        if abs(r - wk[0]) <= 1 and abs(c - wk[1]) <= 1:
-            return True
+def is_square_attacked_by_white(board, r, c):
+    wk = find_piece(board, 'w_king')
+    wq = find_piece(board, 'w_queen')
+    if wk and (r, c) in get_king_moves(board, wk[0], wk[1], True):
+        return True
+    if wq and (r, c) in get_queen_moves(board, wq[0], wq[1]):
+        return True
     return False
 
-# Verificar si el rey negro está en jaque
-def is_check(board):
-    bk = find_piece(board, BLACK_KING)
-    if bk is None:
+def is_in_check(board, bk_pos):
+    if not bk_pos:
         return False
-    return is_attacked_by_white(board, bk[0], bk[1])
+    return is_square_attacked_by_white(board, bk_pos[0], bk_pos[1])
 
-# Verificar si el rey negro está en jaque mate
+def get_black_king_moves(board):
+    pos = find_piece(board, 'b_king')
+    if not pos:
+        return []
+    moves = []
+    for mr, mc in get_king_moves(board, pos[0], pos[1], False):
+        if not is_square_attacked_by_white(board, mr, mc):
+            wk = find_piece(board, 'w_king')
+            if wk and abs(mr - wk[0]) <= 1 and abs(mc - wk[1]) <= 1:
+                continue
+            moves.append((mr, mc))
+    return moves
+
+def no_legal_black_moves(board):
+    return len(get_black_king_moves(board)) == 0
+
 def is_checkmate(board):
-    if not is_check(board):
-        return False
-    bk = find_piece(board, BLACK_KING)
-    for move in king_moves(bk):
-        r, c = move
-        if board[r][c] != EMPTY:
-            continue
-        temp_board = copy.deepcopy(board)
-        apply_move(temp_board, BLACK_KING, move)
-        if not is_check(temp_board):
-            return False
-    return True
+    bk = find_piece(board, 'b_king')
+    return bk is not None and is_in_check(board, bk) and no_legal_black_moves(board)
 
-# Evaluar la posición
+def is_stalemate(board):
+    bk = find_piece(board, 'b_king')
+    return bk is not None and (not is_in_check(board, bk)) and no_legal_black_moves(board)
+
 def evaluate(board):
-    wk_pos = find_piece(board, WHITE_KING)
-    wq_pos = find_piece(board, WHITE_QUEEN)
-    bk_pos = find_piece(board, BLACK_KING)
-
-    if bk_pos is None:
-        return -999
-
-    # Penaliza si la reina está justo al lado del rey negro (evita regalarse)
-    if abs(wq_pos[0] - bk_pos[0]) <= 1 and abs(wq_pos[1] - bk_pos[1]) <= 1:
-        return -500
-
-    distance_king = abs(wk_pos[0] - bk_pos[0]) + abs(wk_pos[1] - bk_pos[1])
-    distance_queen = abs(wq_pos[0] - bk_pos[0]) + abs(wq_pos[1] - bk_pos[1])
-    coordination = abs(wk_pos[0] - wq_pos[0]) + abs(wk_pos[1] - wq_pos[1])
-
     if is_checkmate(board):
         return 1000
+    if is_stalemate(board):
+        return 0
+    bk = find_piece(board, 'b_king')
+    if not bk:
+        return 1000
+    black_moves = get_black_king_moves(board)
+    score = -len(black_moves) * 10
+    wq = find_piece(board, 'w_queen')
+    wk = find_piece(board, 'w_king')
+    if wq:
+        dist_q = abs(wq[0] - bk[0]) + abs(wq[1] - bk[1])
+        score += (14 - dist_q) * 10
+    if wk:
+        dist_k = abs(wk[0] - bk[0]) + abs(wk[1] - bk[1])
+        score += (14 - dist_k) * 5
+    if is_in_check(board, bk):
+        score += 100
+    return score
 
-    # Mientras más cerca estén rey y reina blancos del rey negro, mejor
-    return -(distance_king + 0.5 * distance_queen + 0.3 * coordination)
-
-# Minimax
-def minimax(board, depth, is_max):
-    if depth == 0 or is_checkmate(board):
-        return evaluate(board), None
-
-    if is_max:
-        best = float('-inf')
-        best_move = None
-
-        # IA blanca mueve
-        for piece in [WHITE_KING, WHITE_QUEEN]:
-            pos = find_piece(board, piece)
-            if pos is None:
-                continue
-            if piece == WHITE_KING:
-                moves = king_moves(pos)
-            else:
-                moves = queen_moves(pos, board)
-
-            for move in moves:
-                temp = copy.deepcopy(board)
-                apply_move(temp, piece, move)
-                score, _ = minimax(temp, depth - 1, False)
-                if score > best:
-                    best = score
-                    best_move = (piece, move)
-        return best, best_move
+def minimax(board, depth, alpha, beta, maximizing):
+    if depth == 0 or is_checkmate(board) or is_stalemate(board):
+        return evaluate(board)
+    if maximizing:
+        max_eval = float('-inf')
+        for r in range(8):
+            for c in range(8):
+                piece = board[r][c]
+                if piece and piece.startswith('w'):
+                    moves = get_king_moves(board, r, c, True) if piece == 'w_king' else get_queen_moves(board, r, c)
+                    for mr, mc in moves:
+                        newb = [row[:] for row in board]
+                        newb[mr][mc] = piece
+                        newb[r][c] = ''
+                        val = minimax(newb, depth-1, alpha, beta, False)
+                        if val > max_eval:
+                            max_eval = val
+                        alpha = max(alpha, val)
+                        if beta <= alpha:
+                            break
+        return max_eval
     else:
-        best = float('inf')
-        bk = find_piece(board, BLACK_KING)
-        moves = king_moves(bk)
-        best_move = None
-        for move in moves:
-            r, c = move
-            if board[r][c] != EMPTY:
-                continue
-            temp = copy.deepcopy(board)
-            apply_move(temp, BLACK_KING, move)
-            if is_check(temp):
-                continue
-            score, _ = minimax(temp, depth - 1, True)
-            if score < best:
-                best = score
-                best_move = (BLACK_KING, move)
-        return best, best_move
+        bk_pos = find_piece(board, 'b_king')
+        moves = get_black_king_moves(board)
+        if not moves:
+            return 1000 if is_in_check(board, bk_pos) else 0
+        min_eval = float('inf')
+        for mr, mc in moves:
+            newb = [row[:] for row in board]
+            newb[mr][mc] = 'b_king'
+            oldr, oldc = bk_pos
+            newb[oldr][oldc] = ''
+            val = minimax(newb, depth-1, alpha, beta, True)
+            min_eval = min(min_eval, val)
+            beta = min(beta, val)
+            if beta <= alpha:
+                break
+        return min_eval
 
-# Juego principal
-def play():
-    board = create_initial_board()
+def computer_move(board):
+    best_val = float('-inf')
+    best_move = None
+    for r in range(8):
+        for c in range(8):
+            piece = board[r][c]
+            if piece and piece.startswith('w'):
+                moves = get_king_moves(board, r, c, True) if piece == 'w_king' else get_queen_moves(board, r, c)
+                for mr, mc in moves:
+                    newb = [row[:] for row in board]
+                    newb[mr][mc] = piece
+                    newb[r][c] = ''
+                    val = minimax(newb, 3, float('-inf'), float('inf'), False)
+                    if val > best_val:
+                        best_val = val
+                        best_move = (r, c, mr, mc)
+    if best_move:
+        r, c, mr, mc = best_move
+        board[mr][mc] = board[r][c]
+        board[r][c] = ''
+        print(f"Computer moves {board[mr][mc]} from ({r},{c}) to ({mr},{mc})")
+        return True
+    return False
+
+def draw_board(win, selected=None):
+    for r in range(8):
+        for c in range(8):
+            color = LIGHT_SQUARE if (r+c) % 2 == 0 else DARK_SQUARE
+            if selected == (r,c):
+                color = SELECTED_SQUARE
+            pygame.draw.rect(win, color, (c*SQUARE_SIZE, r*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+
+def draw_pieces(win, board):
+    font = pygame.font.SysFont("segoeuisymbol", 72)
+    for r in range(8):
+        for c in range(8):
+            p = board[r][c]
+            if p:
+                color = WHITE_PIECE_COLOR if p.startswith('w') else BLACK_PIECE_COLOR
+                text = font.render(PIECES[p], True, color)
+                rect = text.get_rect(center=(c*SQUARE_SIZE + SQUARE_SIZE//2, r*SQUARE_SIZE + SQUARE_SIZE//2))
+                win.blit(text, rect)
+
+def main():
+    board = init_board()
+    turn = 'player'
+    selected = None
+    game_over = False
+    clock = pygame.time.Clock()
 
     while True:
-        print_board(board)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN and turn == 'player' and not game_over:
+                mx, my = pygame.mouse.get_pos()
+                c, r = mx // SQUARE_SIZE, my // SQUARE_SIZE
+                if selected is None:
+                    if board[r][c] == 'b_king':
+                        selected = (r, c)
+                else:
+                    sr, sc = selected
+                    moves = get_black_king_moves(board)
+                    if (r, c) in moves:
+                        board[r][c] = 'b_king'
+                        board[sr][sc] = ''
+                        turn = 'computer'
+                    selected = None
 
+        if not game_over and turn == 'computer':
+            moved = computer_move(board)
+            if moved:
+                turn = 'player'
+
+        bk = find_piece(board, 'b_king')
         if is_checkmate(board):
-            print("¡Jaque mate! La IA (blancas) gana.")
-            break
-        elif is_check(board):
-            print("¡Jaque al rey negro!")
+            print("Checkmate! Computer wins!")
+            game_over = True
+        elif is_stalemate(board):
+            print("Stalemate! Draw!")
+            game_over = True
+        elif bk is None:
+            print("Black king captured! Computer wins!")
+            game_over = True
 
-        # Turno IA (blancas)
-        print("IA (blancas) pensando...")
-        _, move = minimax(board, depth=3, is_max=True)
-        if move:
-            piece, pos = move
-            apply_move(board, piece, pos)
-        print_board(board)
+        draw_board(WINDOW, selected)
+        draw_pieces(WINDOW, board)
+        pygame.display.flip()
+        clock.tick(60)
 
-        if is_checkmate(board):
-            print("¡Jaque mate! La IA (blancas) gana.")
-            break
-        elif is_check(board):
-            print("¡Jaque al rey negro!")
+if __name__ == "__main__":
+    main()
 
-        # Turno jugador (rey negro)
-        bk = find_piece(board, BLACK_KING)
-        moves = king_moves(bk)
-        legal_moves = [m for m in moves if board[m[0]][m[1]] == EMPTY]
-
-        # Filtra movimientos ilegales (no meterse a jaque)
-        safe_moves = []
-        for m in legal_moves:
-            temp = copy.deepcopy(board)
-            apply_move(temp, BLACK_KING, m)
-            if not is_check(temp):
-                safe_moves.append(m)
-
-        if not safe_moves:
-            print("Sin movimientos legales. ¡Empate o jaque mate!")
-            break
-
-        print("Tu turno (rey negro).")
-        for i, m in enumerate(safe_moves):
-            print(f"{i}: mover a {m}")
-        try:
-            choice = int(input("Elige movimiento: "))
-            apply_move(board, BLACK_KING, safe_moves[choice])
-        except:
-            print("Entrada inválida. Turno perdido.")
-
-# Ejecutar el juego
-play()
