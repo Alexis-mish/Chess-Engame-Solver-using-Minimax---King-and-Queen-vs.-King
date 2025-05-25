@@ -68,8 +68,8 @@ TT_BETA = 2  # Límite superior (beta se actualizó)
 def init_board():
     board = [['' for _ in range(8)] for _ in range(8)]
     board[0][4] = 'w_king'
-    board[0][5] = 'w_queen'
-    board[7][0] = 'b_king'
+    board[0][3] = 'w_queen'
+    board[7][4] = 'b_king'
     return board
 
 def on_board(r, c):
