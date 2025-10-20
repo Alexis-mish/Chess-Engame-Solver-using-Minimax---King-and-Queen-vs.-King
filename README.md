@@ -28,7 +28,7 @@ pip install pygame
     git clone [https://github.com/Alexis-mish/Chess-Engame-Solver-using-Minimax---King-and-Queen-vs.-King.git](https://github.com/Alexis-mish/Chess-Engame-Solver-using-Minimax---King-and-Queen-vs.-King.git)
     cd Chess-Engame-Solver-using-Minimax---King-and-Queen-vs.-King
 
-2.  Run the main script (assuming the file is named `your_script_name.py`):
+2.  Run the main script (assuming the file is named `chess_game.py`):
 
     python your_script_name.py
 
