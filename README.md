@@ -30,7 +30,7 @@ pip install pygame
 
 2.  Run the main script (assuming the file is named `chess_game.py`):
 
-    python your_script_name.py
+    python chess_game.py
 
 
 ## AI Engine Architecture
